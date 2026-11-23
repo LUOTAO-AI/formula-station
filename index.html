@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>配方共享工作站 · 阶段一</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1d2129;--sub:#4e5969;--faint:#86909c;--line:#e5e6eb;--brand:#1f5fbf;--soft:#eaf1fc;--bad:#a4222f;--ok:#0e7a4f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}
+h1,h2,h3{margin:0;font-weight:600}
+.wrap{max-width:1180px;margin:0 auto;padding:18px 16px 60px}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding-bottom:12px;border-bottom:1px solid var(--line)}
+header h1{font-size:19px}
+header .sub{font-size:12px;color:var(--faint)}
+header .ops{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 13px;font-size:13px;cursor:pointer}
+.btn:hover{background:#f2f3f5}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn.sm{padding:4px 10px;font-size:12px;border-radius:6px}
+.btn.danger{color:var(--bad);border-color:#f3d2d6}
+.modebar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:12px 0 0}
+.modebar .lbl{font-size:12px;color:var(--faint)}
+.chip{border:1px solid var(--line);background:#fff;border-radius:16px;padding:4px 12px;font-size:12.5px;cursor:pointer;color:var(--sub)}
+.chip.on{background:var(--soft);border-color:#cfdff7;color:var(--brand);font-weight:600}
+.layout{display:grid;grid-template-columns:210px 1fr;gap:16px;margin-top:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+.side h3{font-size:13px;color:var(--sub);margin-bottom:10px}
+.zonelist{display:flex;flex-direction:column;gap:4px}
+.zone{display:flex;justify-content:space-between;gap:8px;padding:7px 9px;border-radius:8px;cursor:pointer;font-size:13px}
+.zone:hover{background:var(--bg)}
+.zone.on{background:var(--soft);color:var(--brand);font-weight:600}
+.zone b{font-weight:400;color:var(--faint);font-size:12px}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.filters input,.filters select{border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:13px;background:#fff;outline:none}
+.filters input[type=search]{flex:1;min-width:170px}
+.datef{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--faint)}
+.datef input{width:130px}
+.res{display:grid;gap:10px}
+.rec{border:1px solid var(--line);border-radius:10px;padding:13px 14px;background:#fff}
+.rec .top{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.rec .prod{font-weight:600}
+.rec .ver{background:var(--soft);color:var(--brand);border-radius:6px;padding:1px 7px;font-size:12px;font-weight:600}
+.rec .dt{color:var(--faint);font-size:12px}
+.rec .acts{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.rec .row{display:flex;gap:8px;font-size:12.5px;margin-top:6px}
+.rec .k{flex:0 0 56px;color:var(--faint)}
+.rec .v{color:var(--sub);word-break:break-word}
+.tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:10px;background:#f2f3f5;color:var(--sub);margin-right:4px}
+.empty{border:1px dashed var(--line);border-radius:10px;padding:40px 16px;text-align:center;color:var(--faint);background:#fcfdff}
+.err{border:1px solid #f3d2d6;background:#fdecee;color:var(--bad);border-radius:10px;padding:14px;font-size:13px;line-height:1.7}
+.mask{position:fixed;inset:0;background:rgba(29,33,41,.36);display:none;place-items:center;padding:16px;z-index:50}
+.mask.on{display:grid}
+.modal{background:#fff;border-radius:12px;width:min(760px,100%);max-height:88vh;overflow:auto;padding:20px}
+.modal h3{font-size:16px;margin-bottom:4px}
+.hint{font-size:12px;color:var(--faint);margin-bottom:12px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.f{display:grid;gap:5px;margin-bottom:12px}
+.f label{font-size:12.5px;color:var(--sub)}
+.f input,.f select,.f textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;outline:none;font-size:13px}
+.f input:focus,.f select:focus,.f textarea:focus{border-color:var(--brand)}
+.lines{display:grid;gap:8px}
+.line{display:grid;grid-template-columns:1.4fr 90px 70px 1.4fr 34px;gap:6px;align-items:center}
+.line.proc{grid-template-columns:1.4fr 1fr 1.6fr 34px}
+.line input{border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-size:12.5px;width:100%}
+.line .del{border:1px solid var(--line);background:#fff;border-radius:7px;cursor:pointer;color:var(--faint);height:32px}
+.addrow{font-size:12.5px;color:var(--brand);background:none;border:0;cursor:pointer;padding:4px 0;text-align:left}
+.foot{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+.chain{font-size:12px;color:var(--sub);background:var(--bg);border-radius:8px;padding:8px 10px;margin-bottom:12px}
+.chain a{color:var(--brand);cursor:pointer;text-decoration:underline}
+.imgbox{display:flex;gap:10px;flex-wrap:wrap}
+.imgbox figure{margin:0;font-size:11.5px;color:var(--faint)}
+.imgbox img{width:150px;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--line);display:block}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(10px);background:#1d2129;color:#fff;font-size:13px;padding:8px 16px;border-radius:8px;opacity:0;pointer-events:none;transition:.2s;z-index:80;max-width:88vw}
+.toast.on{opacity:1;transform:translateX(-50%)}
+.gate{max-width:420px;margin:12vh auto;background:#fff;border:1px solid var(--line);border-radius:12px;padding:24px}
+.gate h3{font-size:17px;margin-bottom:6px}
+.gate p{font-size:12.5px;color:var(--faint);margin:0 0 16px}
+.status{font-size:11.5px;color:var(--faint)}
+.status.ok{color:var(--ok)}
+@media (max-width:640px){
+  .wrap{padding:14px 12px 70px}
+  header h1{font-size:17px}
+  header .ops{width:100%}
+  header .ops .btn{flex:1}
+  .layout{grid-template-columns:1fr}
+  .side{order:2}
+  .zonelist{flex-direction:row;flex-wrap:wrap}
+  .zone{border:1px solid var(--line);border-radius:16px;padding:5px 12px}
+  .filters input[type=search]{min-width:100%}
+  .grid2,.grid3{grid-template-columns:1fr}
+  .line{grid-template-columns:1fr 1fr}
+  .line.proc{grid-template-columns:1fr}
+  .line .del{grid-column:span 2;height:30px}
+  .line.proc .del{grid-column:span 1}
+  .imgbox img{width:120px;height:90px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="app"></div>
+</div>
+<div class="mask" id="mask"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
+<input type="file" id="hiddenFile" style="display:none">
+
+<script>
+(function(){
+"use strict";
+
+/* ================= 配置（只有这一段需要改） ================= */
+var SB_URL = "https://iaomspmxhblrxeheacjc.supabase.co";
+var SB_KEY = "sb_publishable_PyT0Lw0nAtywYKtZydn8xg_yqfXyg9w";
+var PAIR_CODE = "shipin2026";   // 进入口令，自己改
+/* ========================================================== */
+
+var H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
+var db = { records: [] };
+var ui = { mode: "product", zone: "", kw: "", from: "", to: "", vFrom: "", vTo: "", name: "" };
+var editing = null;
+
+/* ---------- 基础工具 ---------- */
+function $(s){ return document.querySelector(s); }
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+function toast(m){ var t=$("#toast"); t.textContent=m; t.classList.add("on"); clearTimeout(window.__t); window.__t=setTimeout(function(){ t.classList.remove("on"); },2200); }
+function nowName(){ var n=ui.name||"未署名"; return n; }
+function newId(){ var d=new Date(), p=function(n){return (n<10?"0":"")+n;};
+  return "R-"+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+"-"+Math.random().toString(36).slice(2,6).toUpperCase(); }
+function vTag(v){ return "v"+(v||1); }
+
+/* ---------- 数据接口 ---------- */
+async function sb(path, opts){
+  opts = opts || {};
+  var res = await fetch(SB_URL + "/rest/v1" + path, {
+    method: opts.method || "GET",
+    headers: Object.assign({}, H, { "Content-Type": "application/json", Prefer: opts.prefer || "return=representation" }, opts.headers||{}),
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  });
+  var text = await res.text();
+  var data = null; try{ data = text ? JSON.parse(text) : null; }catch(e){ data = text; }
+  if(!res.ok){
+    var msg = (data && data.message) ? data.message : (text||("HTTP "+res.status));
+    var e = new Error(msg); e.status = res.status; e.code = data && data.code; throw e;
+  }
+  return data;
+}
+async function loadAll(){
+  db.records = await sb("/records?select=*&order=updated_at.desc");
+}
+async function uploadFile(file, recId, kind){
+  var safe = (file.name||"file").replace(/[^\w.\-\u4e00-\u9fa5]/g,"_").slice(-60);
+  var path = recId + "/" + kind + "-" + Date.now() + "-" + safe;
+  var res = await fetch(SB_URL + "/storage/v1/object/files/" + path, {
+    method: "POST",
+    headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "x-upsert": "true", "Content-Type": file.type || "application/octet-stream" },
+    body: file
+  });
+  if(!res.ok){ var t = await res.text(); throw new Error("上传失败：" + t.slice(0,120)); }
+  return SB_URL + "/storage/v1/object/public/files/" + path;
+}
+
+/* ---------- 分区与筛选 ---------- */
+function zoneOf(r){
+  if(ui.mode==="category") return r.category || "未分类";
+  if(ui.mode==="month") return (r.date||"").slice(0,7) || "未填日期";
+  return r.product || "未命名产品";
+}
+function versionOf(r){ var n=parseInt(r.version,10); return isNaN(n)?1:n; }
+function filtered(){
+  var kw = ui.kw.trim().toLowerCase();
+  return db.records.filter(function(r){
+    if(ui.zone && zoneOf(r)!==ui.zone) return false;
+    if(kw && kw.length>1){   // 单字母（如 g/ml 单位）不作为关键词
+      var ing = (r.ingredients||[]).map(function(i){ return [i.name,i.amount,i.note].join(" "); }).join(" ");
+      var proc = (r.process||[]).map(function(p){ return [p.name,p.value,p.note].join(" "); }).join(" ");
+      var hay = [r.product,r.category,r.title,r.feedback,ing,proc].join(" ").toLowerCase();
+      if(hay.indexOf(kw)<0) return false;
+    }
+    if(ui.from && (!r.date || r.date < ui.from)) return false;
+    if(ui.to && (!r.date || r.date > ui.to)) return false;
+    var v = versionOf(r);
+    if(ui.vFrom!=="" && v < parseInt(ui.vFrom,10)) return false;
+    if(ui.vTo!=="" && v > parseInt(ui.vTo,10)) return false;
+    return true;
+  }).sort(function(a,b){
+    var da=a.date||"", db2=b.date||"";
+    if(da===db2) return versionOf(b)-versionOf(a);
+    return db2.localeCompare(da);
+  });
+}
+function usageText(r){
+  var list=(r.ingredients||[]).filter(function(i){return i.name;}).slice(0,3)
+    .map(function(i){ return i.name+" "+(i.amount||"")+(i.unit||""); });
+  return list.length ? list.join("、")+((r.ingredients||[]).length>3?" 等"+(r.ingredients||[]).length+"项":"") : "未填用量";
+}
+function attCount(r){
+  var n=(r.attachments||[]).length;
+  if(r.recipe_image_url) n++;
+  if(r.product_image_url) n++;
+  return n;
+}
+
+/* ---------- 渲染 ---------- */
+function viewGate(){
+  $("#app").innerHTML =
+    '<div class="gate"><h3>配方共享工作站</h3>'+
+    '<p>输入口令和你自己的名字，进入后所有人看到同一份数据。</p>'+
+    '<div class="f"><label>口令</label><input id="gCode" type="password" placeholder="向管理员索取"></div>'+
+    '<div class="f"><label>你的名字（记录会记下最后修改人）</label><input id="gName" placeholder="如：罗涛"></div>'+
+    '<div class="foot" style="justify-content:stretch"><button class="btn primary" id="gGo" style="width:100%">进入</button></div>'+
+    '<p style="margin-top:14px">数据存在云端，多人共用；本页只是界面。</p></div>';
+  $("#gGo").onclick = function(){
+    if($("#gCode").value.trim() !== PAIR_CODE){ toast("口令不对"); return; }
+    var n = $("#gName").value.trim();
+    if(!n){ toast("请填名字"); return; }
+    sessionStorage.setItem("fx_pass","1");
+    localStorage.setItem("fx_name", n);
+    ui.name = n;
+    boot2();
+  };
+  $("#gCode").addEventListener("keydown", function(e){ if(e.key==="Enter") $("#gGo").click(); });
+}
+
+function viewMain(){
+  $("#app").innerHTML =
+    '<header><div><h1>配方共享工作站</h1><div class="sub">云端共享 · 分区 · 检索 · 从上一版派生 · 备份带图</div></div>'+
+    '<div class="ops"><span class="status" id="st">连接中…</span>'+
+      '<button class="btn" id="btnExport">导出备份（含图）</button>'+
+      '<button class="btn" id="btnImport">导入备份</button>'+
+      '<button class="btn primary" id="btnNew">+ 新建配方</button>'+
+      '<button class="btn" id="btnOut">退出</button></div></header>'+
+    '<div class="modebar"><span class="lbl">分区方式：</span>'+
+      '<button class="chip" data-mode="product">按产品名</button>'+
+      '<button class="chip" data-mode="category">按品类</button>'+
+      '<button class="chip" data-mode="month">按时间（年-月）</button>'+
+      '<span class="lbl">当前用户：'+esc(ui.name)+'</span></div>'+
+    '<div class="layout"><aside class="card side"><h3>分区 <span id="zc" style="color:var(--faint);font-weight:400"></span></h3>'+
+      '<div class="zonelist" id="zl"></div></aside>'+
+      '<section><div class="card"><div class="filters">'+
+        '<select id="fZone"><option value="">全部分区</option></select>'+
+        '<input id="fKw" type="search" placeholder="关键词：原料名 / 反馈里的词（单位如 g 会被忽略）">'+
+        '<span class="datef">日期 <input id="fFrom" type="date"> — <input id="fTo" type="date"></span>'+
+        '<span class="datef">版本 <input id="fVFrom" type="number" min="1" step="1" placeholder="起"> — <input id="fVTo" type="number" min="1" step="1" placeholder="止"></span>'+
+        '<button class="btn sm" id="btnReset">清空条件</button>'+
+      '</div><div class="res" id="resList"></div></div></section></div>';
+  bindMain();
+  renderAll();
+}
+function bindMain(){
+  var st=$("#st");
+  $("#btnExport").onclick=doExport;
+  $("#btnImport").onclick=function(){ $("#hiddenFile").accept=".zip,.json"; $("#hiddenFile").click(); };
+  $("#btnNew").onclick=function(){ openForm(null,null); };
+  $("#btnOut").onclick=function(){ sessionStorage.removeItem("fx_pass"); viewGate(); };
+  $("#btnReset").onclick=function(){ ui.zone=""; ui.kw=""; ui.from=""; ui.to=""; ui.vFrom=""; ui.vTo="";
+    $("#fKw").value=""; $("#fFrom").value=""; $("#fTo").value=""; $("#fVFrom").value=""; $("#fVTo").value=""; renderAll(); };
+  document.querySelectorAll(".chip[data-mode]").forEach(function(b){
+    b.onclick=function(){ ui.mode=b.dataset.mode; renderAll(); };
+  });
+  $("#fZone").onchange=function(){ ui.zone=this.value; renderAll(); };
+  $("#fKw").oninput=function(){ ui.kw=this.value; renderResults(); };
+  $("#fFrom").onchange=function(){ ui.from=this.value; renderResults(); };
+  $("#fTo").onchange=function(){ ui.to=this.value; renderResults(); };
+  $("#fVFrom").onchange=function(){ ui.vFrom=this.value; renderResults(); };
+  $("#fVTo").onchange=function(){ ui.vTo=this.value; renderResults(); };
+  $("#hiddenFile").onchange=doImport;
+}
+function renderAll(){
+  document.querySelectorAll(".chip[data-mode]").forEach(function(b){ b.classList.toggle("on", b.dataset.mode===ui.mode); });
+  var map={}, total=db.records.length;
+  db.records.forEach(function(r){ var z=zoneOf(r); map[z]=(map[z]||0)+1; });
+  var keys=Object.keys(map).sort();
+  $("#zc").textContent = total ? "（"+keys.length+" 个）" : "";
+  var html='<div class="zone '+(ui.zone===""?"on":"")+'" data-zone="">全部分区 <b>'+total+'</b></div>';
+  html+=keys.map(function(k){ return '<div class="zone '+(ui.zone===k?"on":"")+'" data-zone="'+esc(k)+'">'+esc(k)+' <b>'+map[k]+'</b></div>'; }).join("");
+  $("#zl").innerHTML=html;
+  $("#zl").querySelectorAll(".zone").forEach(function(el){
+    el.onclick=function(){ ui.zone=el.dataset.zone; renderAll(); };
+  });
+  $("#fZone").innerHTML='<option value="">全部分区</option>'+keys.map(function(k){
+    return '<option value="'+esc(k)+'"'+(k===ui.zone?" selected":"")+'>'+esc(k)+'</option>'; }).join("");
+  renderResults();
+}
+function renderResults(){
+  var list=filtered();
+  var box=$("#resList");
+  if(!db.records.length){ box.innerHTML='<div class="empty">暂无记录。点右上角「+ 新建配方」开始第一次记录（不会预填任何数据）。</div>'; return; }
+  if(!list.length){ box.innerHTML='<div class="empty">没有符合条件的记录。试试清空日期或版本条件。</div>'; return; }
+  box.innerHTML=list.map(function(r){
+    var fb=(r.feedback||"").trim();
+    var fbShort = fb ? (fb.length>60?fb.slice(0,60)+"…":fb) : "未填反馈";
+    var src = r.source==="ocr" ? "OCR" : r.source==="image" ? "图像生成" : r.source==="doc" ? "文档解析" : "手动";
+    return '<article class="rec" data-id="'+esc(r.id)+'">'+
+      '<div class="top"><span class="prod">'+esc(r.product)+'</span>'+
+        '<span class="ver">'+esc(vTag(versionOf(r)))+'</span>'+
+        '<span class="dt">'+esc(r.date||"未填日期")+'</span>'+
+        '<span class="acts"><button class="btn sm" data-act="view">详情</button>'+
+        '<button class="btn sm" data-act="edit">编辑</button>'+
+        '<button class="btn sm primary" data-act="derive">以此版新建</button></span></div>'+
+      '<div class="row"><span class="k">用量</span><span class="v">'+esc(usageText(r))+'</span></div>'+
+      '<div class="row"><span class="k">反馈</span><span class="v">'+esc(fbShort)+'</span></div>'+
+      '<div class="row"><span class="k"></span><span class="v"><span class="tag">修改人 '+esc(r.updated_by||"—")+'</span>'+
+        '<span class="tag">来源 '+src+'</span><span class="tag">附件 '+attCount(r)+'</span>'+
+        (r.parent_id?'<span class="tag">上一版 '+esc(r.parent_id)+'</span>':'')+'</span></div>'+
+    '</article>';
+  }).join("");
+  box.querySelectorAll(".rec").forEach(function(el){
+    var id=el.dataset.id;
+    var r=db.records.find(function(x){ return x.id===id; });
+    el.querySelector('[data-act=view]').onclick=function(){ showDetail(id); };
+    el.querySelector('[data-act=edit]').onclick=function(){ openForm(r,null); };
+    el.querySelector('[data-act=derive]').onclick=function(){ openForm(null,r); };
+  });
+}
+
+/* ---------- 表单 ---------- */
+function emptyRec(){
+  return { product:"", category:"", version:1, date:new Date().toISOString().slice(0,10), title:"",
+    ingredients:[{name:"",amount:"",unit:"g",note:""}], process:[{name:"",value:"",note:""}],
+    feedback:"", recipe_image_url:"", product_image_url:"" };
+}
+function lineIng(i){ return '<div class="line ing">'+
+  '<input data-k="name" placeholder="原料名" value="'+esc(i.name)+'">'+
+  '<input data-k="amount" placeholder="用量" value="'+esc(i.amount)+'">'+
+  '<input data-k="unit" placeholder="单位" value="'+esc(i.unit)+'">'+
+  '<input data-k="note" placeholder="备注" value="'+esc(i.note)+'">'+
+  '<button class="del" data-del="1">×</button></div>'; }
+function lineProc(p){ return '<div class="line proc">'+
+  '<input data-k="name" placeholder="工艺参数" value="'+esc(p.name)+'">'+
+  '<input data-k="value" placeholder="数值" value="'+esc(p.value)+'">'+
+  '<input data-k="note" placeholder="备注" value="'+esc(p.note)+'">'+
+  '<button class="del" data-del="1">×</button></div>'; }
+
+function openForm(rec, parent){
+  editing = { rec: rec || null, parent: parent || null, imgs:{} };
+  var base;
+  if(rec) base = rec;
+  else if(parent){
+    base = { product:parent.product, category:parent.category, version:versionOf(parent)+1,
+      date:new Date().toISOString().slice(0,10), title:"",
+      ingredients:JSON.parse(JSON.stringify(parent.ingredients||[])),
+      process:JSON.parse(JSON.stringify(parent.process||[])),
+      feedback:"", recipe_image_url:"", product_image_url:"" };
+  } else {
+    base = emptyRec();
+  }
+  var isDerive = !!parent && !rec;
+  $("#modal").innerHTML =
+    '<h3>'+(rec?"编辑（保存后生成新版本）":isDerive?"从上一版派生":"新建配方")+'</h3>'+
+    '<div class="hint">'+(isDerive?'已复制上一版的用量与工艺；反馈清空；附件不复制。旧版本会保留。':'空表单，不预填任何数据。')+'</div>'+
+    (isDerive?'<div class="chain">来源：'+esc(parent.id)+'（'+esc(vTag(versionOf(parent)))+'）</div>':'')+
+    (rec?'<div class="chain">你正在编辑记录 '+esc(rec.id)+'，保存后旧内容仍保留在历史里。</div>':'')+
+    '<div class="grid3">'+
+      '<div class="f"><label>产品名 *</label><input id="mProduct" value="'+esc(base.product)+'"></div>'+
+      '<div class="f"><label>品类（可留空）</label><input id="mCategory" value="'+esc(base.category)+'"></div>'+
+      '<div class="f"><label>日期</label><input id="mDate" type="date" value="'+esc(base.date||"")+'"></div>'+
+    '</div>'+
+    '<div class="grid2">'+
+      '<div class="f"><label>版本号（整数）</label><input id="mVersion" type="number" min="1" step="1" value="'+esc(base.version||1)+'"></div>'+
+      '<div class="f"><label>标题（可留空）</label><input id="mTitle" value="'+esc(base.title||"")+'"></div>'+
+    '</div>'+
+    '<div class="f"><label>配方用量</label><div class="lines" id="ingLines">'+
+      (base.ingredients.length?base.ingredients.map(lineIng).join(""):lineIng({name:"",amount:"",unit:"g",note:""}))+
+      '</div><button class="addrow" id="addIng">+ 添加原料</button></div>'+
+    '<div class="f"><label>工艺参数</label><div class="lines" id="procLines">'+
+      (base.process.length?base.process.map(lineProc).join(""):lineProc({name:"",value:"",note:""}))+
+      '</div><button class="addrow" id="addProc">+ 添加工艺参数</button></div>'+
+    '<div class="f"><label>成品反馈</label><textarea id="mFeedback" rows="3">'+esc(base.feedback||"")+'</textarea></div>'+
+    '<div class="grid2">'+
+      '<div class="f"><label>配方纸原图（可选）</label><input type="file" id="mRecipeImg" accept="image/*">'+
+        '<div class="imgbox" id="prevRecipe">'+(base.recipe_image_url?'<figure><img src="'+esc(base.recipe_image_url)+'"><figcaption>已存</figcaption></figure>':'')+'</div></div>'+
+      '<div class="f"><label>成品照片（可选）</label><input type="file" id="mProductImg" accept="image/*">'+
+        '<div class="imgbox" id="prevProduct">'+(base.product_image_url?'<figure><img src="'+esc(base.product_image_url)+'"><figcaption>已存</figcaption></figure>':'')+'</div></div>'+
+    '</div>'+
+    '<div class="foot"><button class="btn" id="cancelBtn">取消</button><button class="btn primary" id="saveBtn">保存</button></div>';
+  $("#mask").classList.add("on");
+  $("#addIng").onclick=function(){ $("#ingLines").insertAdjacentHTML("beforeend", lineIng({name:"",amount:"",unit:"g",note:""})); };
+  $("#addProc").onclick=function(){ $("#procLines").insertAdjacentHTML("beforeend", lineProc({name:"",value:"",note:""})); };
+  $("#modal").querySelectorAll("[data-del]").forEach(function(b){
+    b.onclick=function(){ var box=b.closest(".lines"); if(box.querySelectorAll(".line").length>1) b.closest(".line").remove(); else toast("至少保留一行"); };
+  });
+  $("#cancelBtn").onclick=closeModal;
+  $("#saveBtn").onclick=saveForm;
+  $("#mRecipeImg").onchange=function(){ showPick(this, "#prevRecipe"); };
+  $("#mProductImg").onchange=function(){ showPick(this, "#prevProduct"); };
+}
+function showPick(input, sel){
+  var f=input.files[0]; if(!f) return;
+  var url=URL.createObjectURL(f);
+  $(sel).innerHTML='<figure><img src="'+url+'"><figcaption>待上传</figcaption></figure>';
+}
+function closeModal(){ $("#mask").classList.remove("on"); editing=null; }
+function collectLines(sel){
+  return Array.prototype.map.call(document.querySelectorAll(sel+" .line"), function(row){
+    var o={}; row.querySelectorAll("input").forEach(function(i){ o[i.dataset.k]=i.value.trim(); });
+    return o;
+  }).filter(function(o){ return (o.name||o.value||"").length; });
+}
+async function saveForm(){
+  var product=$("#mProduct").value.trim();
+  if(!product){ toast("产品名不能为空"); return; }
+  var btn=$("#saveBtn"); btn.disabled=true; btn.textContent="保存中…";
+  try{
+    var rec=editing.rec, parent=editing.parent;
+    var id = rec ? rec.id : newId();
+    var ver = parseInt($("#mVersion").value,10) || 1;
+    var row = {
+      product:product, category:$("#mCategory").value.trim()||"",
+      version:ver, date:$("#mDate").value||null, title:$("#mTitle").value.trim(),
+      ingredients:collectLines("#ingLines"), process:collectLines("#procLines"),
+      feedback:$("#mFeedback").value.trim(),
+      updated_by: nowName()
+    };
+    if(rec){
+      // 编辑：旧版本保留为新行，原行升级为最新版
+      if(ver === versionOf(rec)) row.version = versionOf(rec)+1;
+      row.parent_id = rec.id;
+      await sb("/records", { method:"POST", body:Object.assign({ id:newId(), recipe_image_url:"", product_image_url:"" }, row) });
+    } else {
+      row.id = id;
+      row.parent_id = parent ? parent.id : null;
+      row.source = "manual";
+      row.recipe_image_url = "";
+      row.product_image_url = "";
+      // 上传图片
+      var f1=$("#mRecipeImg").files[0], f2=$("#mProductImg").files[0];
+      if(f1) row.recipe_image_url = await uploadFile(f1, id, "recipe");
+      if(f2) row.product_image_url = await uploadFile(f2, id, "product");
+      await sb("/records", { method:"POST", body:row });
+    }
+    await refresh();
+    closeModal();
+    toast(rec?"已保存为新版本（旧版本仍在）":"已保存");
+  }catch(e){
+    toast("保存失败："+e.message);
+  }finally{
+    btn.disabled=false; btn.textContent="保存";
+  }
+}
+
+/* ---------- 详情 ---------- */
+function showDetail(id){
+  var r=db.records.find(function(x){ return x.id===id; }); if(!r) return;
+  var kids=db.records.filter(function(x){ return x.parent_id===id; });
+  var parent=r.parent_id?db.records.find(function(x){ return x.id===r.parent_id; }):null;
+  var ing=(r.ingredients||[]).map(function(i){ return '<tr><td>'+esc(i.name)+'</td><td>'+esc(i.amount)+'</td><td>'+esc(i.unit)+'</td><td>'+esc(i.note)+'</td></tr>'; }).join("");
+  var proc=(r.process||[]).map(function(p){ return '<tr><td>'+esc(p.name)+'</td><td>'+esc(p.value)+'</td><td>'+esc(p.note)+'</td></tr>'; }).join("");
+  var imgs="";
+  if(r.recipe_image_url) imgs+='<figure><img src="'+esc(r.recipe_image_url)+'"><figcaption>配方纸原图</figcaption></figure>';
+  if(r.product_image_url) imgs+='<figure><img src="'+esc(r.product_image_url)+'"><figcaption>成品照片</figcaption></figure>';
+  $("#modal").innerHTML='<h3>'+esc(r.product)+' · '+esc(vTag(versionOf(r)))+'</h3>'+
+    '<div class="hint">编号 '+esc(r.id)+' ｜ 日期 '+esc(r.date||"—")+' ｜ 修改人 '+esc(r.updated_by||"—")+'</div>'+
+    '<div class="chain">版本链：'+(parent?'上一版 <a data-goto="'+esc(parent.id)+'">'+esc(parent.id)+'</a>':'无上一版')+
+      ' ｜ '+(kids.length?'后续 '+kids.map(function(k){ return '<a data-goto="'+esc(k.id)+'">'+esc(vTag(versionOf(k)))+'</a>'; }).join("、"):'暂无后续')+'</div>'+
+    '<div class="f"><label>配方用量</label><table style="width:100%;border-collapse:collapse;font-size:12.5px">'+
+      '<tr style="color:#86909c"><td>原料</td><td>用量</td><td>单位</td><td>备注</td></tr>'+(ing||'<tr><td colspan="4" style="color:#86909c">未填</td></tr>')+'</table></div>'+
+    '<div class="f"><label>工艺参数</label><table style="width:100%;border-collapse:collapse;font-size:12.5px">'+
+      '<tr style="color:#86909c"><td>参数</td><td>数值</td><td>备注</td></tr>'+(proc||'<tr><td colspan="3" style="color:#86909c">未填</td></tr>')+'</table></div>'+
+    '<div class="f"><label>成品反馈</label><div style="font-size:13px;color:var(--sub);white-space:pre-wrap">'+(r.feedback?esc(r.feedback):'未填')+'</div></div>'+
+    (imgs?'<div class="f"><label>图片</label><div class="imgbox">'+imgs+'</div></div>':'')+
+    '<div class="foot"><button class="btn danger" id="delBtn">删除这条记录</button>'+
+      '<button class="btn" id="cancelBtn">关闭</button>'+
+      '<button class="btn primary" id="deriveBtn">以此版新建</button></div>';
+  $("#mask").classList.add("on");
+  $("#cancelBtn").onclick=closeModal;
+  $("#deriveBtn").onclick=function(){ openForm(null,r); };
+  $("#delBtn").onclick=function(){ delRecord(r); };
+  $("#modal").querySelectorAll("[data-goto]").forEach(function(a){
+    a.onclick=function(){ showDetail(a.dataset.goto); };
+  });
+}
+async function delRecord(r){
+  if(!confirm("确认删除 "+r.product+" "+vTag(versionOf(r))+"？删除后无法恢复（它在版本链上的后续版本不会跟着删）。")) return;
+  try{
+    await sb("/records?id=eq."+encodeURIComponent(r.id), { method:"DELETE", prefer:"return=minimal" });
+    await refresh(); closeModal(); toast("已删除");
+  }catch(e){ toast("删除失败："+e.message); }
+}
+
+/* ================= ZIP（仅存储模式，无依赖） ================= */
+var CRC_TABLE=(function(){ var t=new Uint32Array(256);
+  for(var n=0;n<256;n++){ var c=n; for(var k=0;k<8;k++) c = (c&1) ? (0xEDB88320 ^ (c>>>1)) : (c>>>1); t[n]=c>>>0; } return t; })();
+function crc32(u8){ var c=0xFFFFFFFF; for(var i=0;i<u8.length;i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c>>>8); return (c ^ 0xFFFFFFFF)>>>0; }
+function enc(s){ return new TextEncoder().encode(s); }
+async function zipPack(entries){ // entries: [{name, data:Uint8Array}]
+  var parts=[], central=[], offset=0;
+  function u16(n){ return new Uint8Array([n & 255, (n>>>8) & 255]); }
+  function u32(n){ return new Uint8Array([n & 255, (n>>>8) & 255, (n>>>16) & 255, (n>>>24) & 255]); }
+  function cat(arrs){ var len=arrs.reduce(function(a,b){ return a+b.length; },0); var out=new Uint8Array(len), p=0;
+    arrs.forEach(function(a){ out.set(a,p); p+=a.length; }); return out; }
+  var d=new Date(); var dosTime=((d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()/2))&0xFFFF;
+  var dosDate=(((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate())&0xFFFF;
+  entries.forEach(function(e){
+    var name=enc(e.name), data=e.data, crc=crc32(data);
+    var local=cat([u32(0x04034b50),u16(20),u16(0x0800),u16(0),u16(dosTime),u16(dosDate),
+      u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),name,data]);
+    parts.push(local);
+    central.push(cat([u32(0x02014b50),u16(20),u16(20),u16(0x0800),u16(0),u16(dosTime),u16(dosDate),
+      u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset),name]));
+    offset += local.length;
+  });
+  var centralBlob=cat(central);
+  var end=cat([u32(0x06054b50),u16(0),u16(0),u16(entries.length),u16(entries.length),
+    u32(centralBlob.length),u32(offset),u16(0)]);
+  return new Blob([cat(parts), centralBlob, end], { type:"application/zip" });
+}
+function zipUnpack(buf){
+  var u8=new Uint8Array(buf), dv=new DataView(buf), out=[], p=0;
+  while(p < u8.length-4){
+    var sig=dv.getUint32(p,true);
+    if(sig === 0x02014b50 || sig === 0x06054b50) break;
+    if(sig !== 0x04034b50) throw new Error("压缩包格式不认识（可能不是本系统导出的）");
+    var method=dv.getUint16(p+8,true);
+    var csize=dv.getUint32(p+18,true);
+    var nlen=dv.getUint16(p+26,true), elen=dv.getUint16(p+28,true);
+    var name=new TextDecoder().decode(u8.slice(p+30,p+30+nlen));
+    var dataStart=p+30+nlen+elen;
+    if(method !== 0) throw new Error("压缩包用了压缩算法，本系统只支持自己导出的包");
+    out.push({ name:name, data:u8.slice(dataStart, dataStart+csize) });
+    p = dataStart + csize;
+  }
+  return out;
+}
+
+/* ================= 导出 / 导入 ================= */
+function blobToU8(blob){ return blob.arrayBuffer().then(function(b){ return new Uint8Array(b); }); }
+async function fetchAsU8(url){
+  var r=await fetch(url); if(!r.ok) throw new Error("下载失败："+url);
+  return new Uint8Array(await r.arrayBuffer());
+}
+async function doExport(){
+  if(!db.records.length){ toast("还没有记录可导出"); return; }
+  toast("正在打包…");
+  try{
+    var meta={ app:"formula-station", version:4, exportedAt:new Date().toISOString(), exportedBy:ui.name, records:[] };
+    var files=[]; var seen={};
+    for(var i=0;i<db.records.length;i++){
+      var r=db.records[i]; var copy=JSON.parse(JSON.stringify(r));
+      var pairs=[["recipe_image_url","recipe"],["product_image_url","product"]];
+      for(var j=0;j<pairs.length;j++){
+        var field=pairs[j][0], kind=pairs[j][1], url=r[field];
+        if(url && url.indexOf(SB_URL+"/storage/v1/object/public/files/")===0){
+          var rel=decodeURIComponent(url.split("/object/public/files/")[1]);
+          var zipName="images/"+rel;
+          if(!seen[zipName]){ seen[zipName]=1; try{ files.push({ name:zipName, data:await fetchAsU8(url) }); }catch(e){ console.warn(e); } }
+          copy[field]=zipName;      // 备份里存相对路径
+        }
+      }
+      meta.records.push(copy);
+    }
+    files.unshift({ name:"meta.json", data:enc(JSON.stringify(meta,null,2)) });
+    var blob=await zipPack(files);
+    var a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download="配方备份-"+new Date().toISOString().slice(0,10)+".zip";
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); },800);
+    toast("已导出：记录 "+db.records.length+" 条、文件 "+files.length+" 个");
+  }catch(e){ toast("导出失败："+e.message); }
+}
+
+async function doImport(){
+  var f=$("#hiddenFile").files[0]; if(!f) return;
+  try{
+    if(/\.json$/i.test(f.name)){
+      var txt=await f.text(); var d=JSON.parse(txt);
+      var recs = Array.isArray(d) ? d : d.records;
+      if(!Array.isArray(recs)) throw new Error("这个 JSON 里没有 records 数组");
+      if(!confirm("这是纯 JSON 备份，不含图片与附件。\n将导入 "+recs.length+" 条记录（不删除现有数据），继续？")) return;
+      await upsertRecords(recs.map(function(r){ return Object.assign({}, r, { recipe_image_url:"", product_image_url:"" }); }));
+      toast("已导入 "+recs.length+" 条（图片需重新上传）");
+      return;
+    }
+    var entries=zipUnpack(await f.arrayBuffer());
+    var metaEntry=entries.filter(function(e){ return e.name==="meta.json"; })[0];
+    if(!metaEntry) throw new Error("压缩包里没有 meta.json，不是本系统导出的备份");
+    var meta=JSON.parse(new TextDecoder().decode(metaEntry.data));
+    var imageEntries=entries.filter(function(e){ return e.name.indexOf("images/")===0; });
+    if(!confirm("将恢复 "+meta.records.length+" 条记录、"+imageEntries.length+" 个图片文件（不删除现有数据）。继续？")) return;
+    // 先传图片，再写记录；任一步失败都不动现有数据
+    var urlMap={};
+    for(var i=0;i<imageEntries.length;i++){
+      var e=imageEntries[i];
+      var rel=e.name.replace(/^images\//,"");
+      var nameOnly=rel.split("/").pop();
+      var blob=new Blob([e.data], { type: guessType(nameOnly) });
+      var file=new File([blob], nameOnly, { type: blob.type });
+      urlMap[e.name]=await uploadFile(file, "import", "img");
+    }
+    var recs=meta.records.map(function(r){
+      var o=Object.assign({}, r);
+      if(o.recipe_image_url && urlMap[o.recipe_image_url]) o.recipe_image_url=urlMap[o.recipe_image_url];
+      else if(o.recipe_image_url && o.recipe_image_url.indexOf("http")!==0) o.recipe_image_url="";
+      if(o.product_image_url && urlMap[o.product_image_url]) o.product_image_url=urlMap[o.product_image_url];
+      else if(o.product_image_url && o.product_image_url.indexOf("http")!==0) o.product_image_url="";
+      return o;
+    });
+    await upsertRecords(recs);
+    toast("已恢复：记录 "+recs.length+" 条、图片 "+imageEntries.length+" 个");
+  }catch(e){
+    toast("导入失败："+e.message+"（现有数据未改动）");
+  }finally{
+    $("#hiddenFile").value="";
+  }
+}
+function guessType(name){
+  var m=/\.(jpg|jpeg)$/i.test(name)?"image/jpeg":/\.png$/i.test(name)?"image/png":/\.webp$/i.test(name)?"image/webp":/\.gif$/i.test(name)?"image/gif":"application/octet-stream";
+  return m;
+}
+async function upsertRecords(recs){
+  if(!recs.length) return;
+  await sb("/records?on_conflict=id", {
+    method:"POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: recs.map(function(r){
+      return {
+        id:r.id, product:r.product, category:r.category||"", version:parseInt(r.version,10)||1,
+        date:r.date||null, title:r.title||"", ingredients:r.ingredients||[], process:r.process||[],
+        feedback:r.feedback||"", parent_id:r.parent_id||null, source:r.source||"manual",
+        recipe_image_url:r.recipe_image_url||"", product_image_url:r.product_image_url||"",
+        attachments:r.attachments||[], updated_by:r.updated_by||"(导入)", updated_at:new Date().toISOString()
+      };
+    })
+  });
+}
+
+/* ---------- 启动 ---------- */
+async function refresh(){
+  try{
+    await loadAll();
+    var st=$("#st"); if(st){ st.textContent="已连接云端 · "+db.records.length+" 条记录"; st.className="status ok"; }
+    renderAll();
+  }catch(e){
+    var st=$("#st"); if(st){ st.textContent="连接失败"; st.className="status"; }
+    if(e.code==="PGRST205"){
+      $("#resList").innerHTML='<div class="err"><b>数据库还没建表。</b><br>去 Supabase 控制台 → SQL Editor → 粘贴 <code>schema.sql</code> 整段 → Run，然后刷新本页。</div>';
+    }else{
+      $("#resList").innerHTML='<div class="err">读取失败：'+esc(e.message)+'<br>检查网络，或确认 key 与项目地址正确。</div>';
+    }
+  }
+}
+function boot2(){
+  viewMain();
+  refresh();
+}
+function boot(){
+  ui.name = localStorage.getItem("fx_name") || "";
+  if(sessionStorage.getItem("fx_pass")==="1" && ui.name){ boot2(); }
+  else { viewGate(); }
+}
+boot();
+})();
+</script>
+</body>
+</html>
