@@ -127,7 +127,8 @@ var pendingMode = "import";
 /* ---------- 基础工具 ---------- */
 function $(s){ return document.querySelector(s); }
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
-function toast(m){ var t=$("#toast"); t.textContent=m; t.classList.add("on"); clearTimeout(window.__t); window.__t=setTimeout(function(){ t.classList.remove("on"); },2200); }
+function toast(m){ var t=$("#toast"); t.textContent=m; t.classList.add("on"); clearTimeout(window.__t); window.__t=setTimeout(function(){ t.classList.remove("on"); },4200); }
+function setJob(html){ var el=$("#jobStatus"); if(!el) return; if(!html){ el.style.display="none"; el.innerHTML=""; return; } el.style.display="block"; el.innerHTML=html; var jb=$("#jobClose"); if(jb) jb.onclick=function(){ setJob(""); }; }
 function nowName(){ var n=ui.name||"未署名"; return n; }
 function newId(){ var d=new Date(), p=function(n){return (n<10?"0":"")+n;};
   return "R-"+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+"-"+Math.random().toString(36).slice(2,6).toUpperCase(); }
@@ -248,6 +249,7 @@ function viewMain(){
       '<button class="chip" data-mode="category">按品类</button>'+
       '<button class="chip" data-mode="month">按时间（年-月）</button>'+
       '<span class="lbl">当前用户：'+esc(ui.name)+'</span></div>'+
+    '<div class="card" id="jobStatus" style="display:none;margin-top:12px;font-size:13px;line-height:1.7"></div>'+
     '<div class="layout"><aside class="card side"><h3>分区 <span id="zc" style="color:var(--faint);font-weight:400"></span></h3>'+
       '<div class="zonelist" id="zl"></div></aside>'+
       '<section><div class="card"><div class="filters">'+
@@ -625,10 +627,11 @@ async function doBatch(){
   if(!files.length) return;
   if(!confirm("将用这 "+files.length+" 张图片各建一条记录：\n· 产品名暂用文件名（保存后可改）\n· 用量、反馈留空，不预填任何数据\n· 图片作为「配方纸原图」保存\n继续？")) return;
   var ok=0, fail=[];
+  setJob('<b>批量导入进行中…</b><div style="color:#86909c">共 '+files.length+' 张，正在上传第 1 张</div>');
   for(var i=0;i<files.length;i++){
     var f=files[i], id=newId();
     var name=(f.name||"图片").replace(/\.[^.]+$/,"") || "未命名图片";
-    toast("批量导入 "+(i+1)+"/"+files.length+" …");
+    setJob('<b>批量导入进行中…</b><div style="color:#86909c">'+files.length+' 张，正在处理 '+(i+1)+'/'+files.length+'：'+esc(f.name)+'</div>');
     try{
       var url = await uploadFile(f, id, "recipe");
       await sb("/records", { method:"POST", body:{
@@ -641,9 +644,12 @@ async function doBatch(){
       ok++;
     }catch(e){ fail.push(name+"（"+e.message+"）"); }
   }
-  await refresh();
+  var msg = '<b>批量导入完成：'+ok+' 条成功'+(fail.length?'，'+fail.length+' 条失败':'')+'</b>';
+  if(fail.length) msg += '<div style="color:#a4222f;margin-top:6px">'+fail.map(function(x){ return esc(x); }).join('<br>')+'</div>';
+  msg += '<div style="margin-top:6px"><button class="btn sm" id="jobClose">关闭提示</button></div>';
+  setJob(msg);                       // 先出结果，不等刷新
   toast("批量导入完成："+ok+" 条成功"+(fail.length?"，"+fail.length+" 条失败":""));
-  if(fail.length) console.warn(fail);
+  refresh().catch(function(e){ toast("列表刷新失败："+e.message+"（数据已写入，刷新页面即可）"); });
 }
 
 /* ================= 导出 / 导入 ================= */
@@ -698,6 +704,14 @@ async function doExport(){
 
 async function doImport(){
   var f=$("#hiddenFile").files[0]; if(!f) return;
+  var isImg = /^image\//.test(f.type||"") || /\.(png|jpe?g|webp|gif|heic|bmp)$/i.test(f.name||"");
+  if(isImg){
+    $("#hiddenFile").value="";
+    var m = '<b>这是一张图片，不是备份包。</b><div style="color:#86909c;margin-top:4px">图片请点顶部「批量导入图片」；「导入备份」只认 .zip / .json。</div>';
+    setJob(m + '<div style="margin-top:6px"><button class="btn sm" id="jobClose">关闭提示</button></div>');
+    toast("图片请用「批量导入图片」");
+    return;
+  }
   try{
     if(/\.json$/i.test(f.name)){
       var txt=await f.text(); var d=JSON.parse(txt);
