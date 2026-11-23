@@ -115,12 +115,14 @@ header .ops{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
 var SB_URL = "https://iaomspmxhblrxeheacjc.supabase.co";
 var SB_KEY = "sb_publishable_PyT0Lw0nAtywYKtZydn8xg_yqfXyg9w";
 var PAIR_CODE = "shipin2026";   // 进入口令，自己改
+var MAX_MB = 20;                // 单个文件上限（MB）
 /* ========================================================== */
 
 var H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
 var db = { records: [] };
 var ui = { mode: "product", zone: "", kw: "", from: "", to: "", vFrom: "", vTo: "", name: "" };
 var editing = null;
+var pendingMode = "import";
 
 /* ---------- 基础工具 ---------- */
 function $(s){ return document.querySelector(s); }
@@ -151,7 +153,15 @@ async function loadAll(){
   db.records = await sb("/records?select=*&order=updated_at.desc");
 }
 async function uploadFile(file, recId, kind){
-  var safe = (file.name||"file").replace(/[^\w.\-\u4e00-\u9fa5]/g,"_").slice(-60);
+  if(file && file.size > MAX_MB*1024*1024){
+    throw new Error("文件「"+file.name+"」有 "+(file.size/1024/1024).toFixed(1)+"MB，超过单文件上限 "+MAX_MB+"MB，已拒绝");
+  }
+  // Supabase 的对象名只接受 ASCII：中文文件名会报 400 InvalidKey，这里统一转成安全名
+  var raw = (file.name || "file");
+  var dot = raw.lastIndexOf(".");
+  var ext = dot > -1 ? raw.slice(dot + 1).replace(/[^A-Za-z0-9]/g, "").slice(0, 8).toLowerCase() : "";
+  var base = (dot > -1 ? raw.slice(0, dot) : raw).replace(/[^A-Za-z0-9_-]/g, "_").replace(/_+/g, "_").slice(0, 40) || "file";
+  var safe = base + (ext ? "." + ext : "");
   var path = recId + "/" + kind + "-" + Date.now() + "-" + safe;
   var res = await fetch(SB_URL + "/storage/v1/object/files/" + path, {
     method: "POST",
@@ -230,6 +240,7 @@ function viewMain(){
     '<div class="ops"><span class="status" id="st">连接中…</span>'+
       '<button class="btn" id="btnExport">导出备份（含图）</button>'+
       '<button class="btn" id="btnImport">导入备份</button>'+
+      '<button class="btn" id="btnBatch">批量导入图片</button>'+
       '<button class="btn primary" id="btnNew">+ 新建配方</button>'+
       '<button class="btn" id="btnOut">退出</button></div></header>'+
     '<div class="modebar"><span class="lbl">分区方式：</span>'+
@@ -252,7 +263,8 @@ function viewMain(){
 function bindMain(){
   var st=$("#st");
   $("#btnExport").onclick=doExport;
-  $("#btnImport").onclick=function(){ $("#hiddenFile").accept=".zip,.json"; $("#hiddenFile").click(); };
+  $("#btnImport").onclick=function(){ pendingMode="import"; var h=$("#hiddenFile"); h.accept=".zip,.json"; h.multiple=false; h.value=""; h.click(); };
+  $("#btnBatch").onclick=function(){ pendingMode="batch"; var h=$("#hiddenFile"); h.accept="image/*"; h.multiple=true; h.value=""; h.click(); };
   $("#btnNew").onclick=function(){ openForm(null,null); };
   $("#btnOut").onclick=function(){ sessionStorage.removeItem("fx_pass"); viewGate(); };
   $("#btnReset").onclick=function(){ ui.zone=""; ui.kw=""; ui.from=""; ui.to=""; ui.vFrom=""; ui.vTo="";
@@ -266,7 +278,7 @@ function bindMain(){
   $("#fTo").onchange=function(){ ui.to=this.value; renderResults(); };
   $("#fVFrom").onchange=function(){ ui.vFrom=this.value; renderResults(); };
   $("#fVTo").onchange=function(){ ui.vTo=this.value; renderResults(); };
-  $("#hiddenFile").onchange=doImport;
+  $("#hiddenFile").onchange=function(){ if(pendingMode==="batch") doBatch(); else doImport(); };
 }
 function renderAll(){
   document.querySelectorAll(".chip[data-mode]").forEach(function(b){ b.classList.toggle("on", b.dataset.mode===ui.mode); });
@@ -334,8 +346,24 @@ function lineProc(p){ return '<div class="line proc">'+
   '<input data-k="note" placeholder="备注" value="'+esc(p.note)+'">'+
   '<button class="del" data-del="1">×</button></div>'; }
 
+function fmtSize(n){
+  if(!n) return "—";
+  if(n < 1024) return n+"B";
+  if(n < 1024*1024) return (n/1024).toFixed(1)+"KB";
+  return (n/1024/1024).toFixed(1)+"MB";
+}
+function attRows(list){
+  if(!list || !list.length) return '<div class="muted" style="font-size:12px;color:#86909c">暂无附件</div>';
+  return list.map(function(a){
+    return '<div class="line" data-url="'+esc(a.url)+'" style="grid-template-columns:1fr auto;align-items:center">'+
+      '<div style="font-size:12.5px"><a href="'+esc(a.url)+'" target="_blank" rel="noopener">'+esc(a.name)+'</a>'+
+      ' <span style="color:#86909c">'+esc(a.type||"")+' · '+fmtSize(a.size)+'</span></div>'+
+      '<button class="del" data-attdel="1" title="删除附件">×</button></div>';
+  }).join("");
+}
+
 function openForm(rec, parent){
-  editing = { rec: rec || null, parent: parent || null, imgs:{} };
+  editing = { rec: rec || null, parent: parent || null, imgs:{}, att:[] };
   var base;
   if(rec) base = rec;
   else if(parent){
@@ -347,6 +375,7 @@ function openForm(rec, parent){
   } else {
     base = emptyRec();
   }
+  editing.att = (base.attachments||[]).slice();
   var isDerive = !!parent && !rec;
   $("#modal").innerHTML =
     '<h3>'+(rec?"编辑（保存后生成新版本）":isDerive?"从上一版派生":"新建配方")+'</h3>'+
@@ -375,6 +404,9 @@ function openForm(rec, parent){
       '<div class="f"><label>成品照片（可选）</label><input type="file" id="mProductImg" accept="image/*">'+
         '<div class="imgbox" id="prevProduct">'+(base.product_image_url?'<figure><img src="'+esc(base.product_image_url)+'"><figcaption>已存</figcaption></figure>':'')+'</div></div>'+
     '</div>'+
+    '<div class="f"><label>附件（PDF / Word / Excel / 图片，可多选，单个 ≤ '+MAX_MB+'MB）</label>'+
+      '<input type="file" id="mAttach" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,image/*">'+
+      '<div class="lines" id="attList" style="margin-top:8px">'+attRows(base.attachments||[])+'</div></div>'+
     '<div class="foot"><button class="btn" id="cancelBtn">取消</button><button class="btn primary" id="saveBtn">保存</button></div>';
   $("#mask").classList.add("on");
   $("#addIng").onclick=function(){ $("#ingLines").insertAdjacentHTML("beforeend", lineIng({name:"",amount:"",unit:"g",note:""})); };
@@ -384,6 +416,17 @@ function openForm(rec, parent){
   });
   $("#cancelBtn").onclick=closeModal;
   $("#saveBtn").onclick=saveForm;
+  $("#modal").querySelectorAll("[data-attdel]").forEach(function(b){
+    b.onclick=function(){
+      var row=b.closest(".line"), url=row.getAttribute("data-url");
+      if(!confirm("删除这个附件？会同时从服务器删除文件。")) return;
+      deleteByPublicUrl(url);
+      editing.att = (editing.att||[]).filter(function(a){ return a.url!==url; });
+      row.remove();
+      if(!$("#attList").querySelector(".line")) $("#attList").innerHTML='<div style="font-size:12px;color:#86909c">暂无附件</div>';
+      toast("附件已删除");
+    };
+  });
   $("#mRecipeImg").onchange=function(){ showPick(this, "#prevRecipe"); };
   $("#mProductImg").onchange=function(){ showPick(this, "#prevProduct"); };
 }
@@ -414,11 +457,21 @@ async function saveForm(){
       feedback:$("#mFeedback").value.trim(),
       updated_by: nowName()
     };
+    // 附件：先传新选的，再拼上已有的
+    var att = (editing.att||[]).slice();
+    var afiles = $("#mAttach").files;
+    for(var ai=0; ai<afiles.length; ai++){
+      var af = afiles[ai];
+      toast("正在上传附件 "+(ai+1)+"/"+afiles.length+"…");
+      var aurl = await uploadFile(af, rec?rec.id:newId(), "attach");
+      att.push({ name: af.name, type: (af.name.split(".").pop()||"").toLowerCase(), size: af.size, url: aurl, uploadedAt: new Date().toISOString() });
+    }
+    row.attachments = att;
     if(rec){
       // 编辑：旧版本保留为新行，原行升级为最新版
       if(ver === versionOf(rec)) row.version = versionOf(rec)+1;
       row.parent_id = rec.id;
-      await sb("/records", { method:"POST", body:Object.assign({ id:newId(), recipe_image_url:"", product_image_url:"" }, row) });
+      await sb("/records", { method:"POST", body:Object.assign({ id:newId(), recipe_image_url:rec.recipe_image_url||"", product_image_url:rec.product_image_url||"" }, row) });
     } else {
       row.id = id;
       row.parent_id = parent ? parent.id : null;
@@ -451,6 +504,12 @@ function showDetail(id){
   var imgs="";
   if(r.recipe_image_url) imgs+='<figure><img src="'+esc(r.recipe_image_url)+'"><figcaption>配方纸原图</figcaption></figure>';
   if(r.product_image_url) imgs+='<figure><img src="'+esc(r.product_image_url)+'"><figcaption>成品照片</figcaption></figure>';
+  var atts=(r.attachments||[]).map(function(a){
+    return '<div style="display:flex;gap:8px;align-items:center;font-size:12.5px;margin:4px 0">'+
+      '<a href="'+esc(a.url)+'" target="_blank" rel="noopener">'+esc(a.name)+'</a>'+
+      '<span style="color:#86909c">'+esc((a.type||"").toUpperCase())+' · '+fmtSize(a.size)+'</span>'+
+      '<button class="btn sm danger" data-attid="'+esc(a.url)+'">删除</button></div>';
+  }).join("");
   $("#modal").innerHTML='<h3>'+esc(r.product)+' · '+esc(vTag(versionOf(r)))+'</h3>'+
     '<div class="hint">编号 '+esc(r.id)+' ｜ 日期 '+esc(r.date||"—")+' ｜ 修改人 '+esc(r.updated_by||"—")+'</div>'+
     '<div class="chain">版本链：'+(parent?'上一版 <a data-goto="'+esc(parent.id)+'">'+esc(parent.id)+'</a>':'无上一版')+
@@ -461,6 +520,7 @@ function showDetail(id){
       '<tr style="color:#86909c"><td>参数</td><td>数值</td><td>备注</td></tr>'+(proc||'<tr><td colspan="3" style="color:#86909c">未填</td></tr>')+'</table></div>'+
     '<div class="f"><label>成品反馈</label><div style="font-size:13px;color:var(--sub);white-space:pre-wrap">'+(r.feedback?esc(r.feedback):'未填')+'</div></div>'+
     (imgs?'<div class="f"><label>图片</label><div class="imgbox">'+imgs+'</div></div>':'')+
+    '<div class="f"><label>附件（'+((r.attachments||[]).length)+' 个）</label><div>'+(atts||'<span style="font-size:12.5px;color:#86909c">未上传附件</span>')+'</div></div>'+
     '<div class="foot"><button class="btn danger" id="delBtn">删除这条记录</button>'+
       '<button class="btn" id="cancelBtn">关闭</button>'+
       '<button class="btn primary" id="deriveBtn">以此版新建</button></div>';
@@ -471,10 +531,27 @@ function showDetail(id){
   $("#modal").querySelectorAll("[data-goto]").forEach(function(a){
     a.onclick=function(){ showDetail(a.dataset.goto); };
   });
+  $("#modal").querySelectorAll("[data-attid]").forEach(function(b){
+    b.onclick=async function(){
+      var url=b.getAttribute("data-attid");
+      if(!confirm("删除这个附件？会同时从服务器删除文件，无法恢复。")) return;
+      b.disabled=true; b.textContent="删除中…";
+      await deleteByPublicUrl(url);
+      var rest=(r.attachments||[]).filter(function(a){ return a.url!==url; });
+      try{
+        await sb("/records?id=eq."+encodeURIComponent(r.id), { method:"PATCH", prefer:"return=minimal", body:{ attachments: rest } });
+        await refresh(); showDetail(r.id); toast("附件已删除");
+      }catch(e){ toast("删除失败："+e.message); b.disabled=false; b.textContent="删除"; }
+    };
+  });
 }
 async function delRecord(r){
-  if(!confirm("确认删除 "+r.product+" "+vTag(versionOf(r))+"？删除后无法恢复（它在版本链上的后续版本不会跟着删）。")) return;
+  if(!confirm("确认删除 "+r.product+" "+vTag(versionOf(r))+"？删除后无法恢复（它在版本链上的后续版本不会跟着删），图片与附件会一起删除。")) return;
   try{
+    await deleteByPublicUrl(r.recipe_image_url);
+    await deleteByPublicUrl(r.product_image_url);
+    var atts=r.attachments||[];
+    for(var i=0;i<atts.length;i++) await deleteByPublicUrl(atts[i].url);
     await sb("/records?id=eq."+encodeURIComponent(r.id), { method:"DELETE", prefer:"return=minimal" });
     await refresh(); closeModal(); toast("已删除");
   }catch(e){ toast("删除失败："+e.message); }
@@ -525,6 +602,50 @@ function zipUnpack(buf){
   return out;
 }
 
+/* ---------- 云文件删除 / 批量导入 ---------- */
+async function deleteByPublicUrl(url){
+  if(!url || url.indexOf(SB_URL+"/storage/v1/object/public/files/")!==0) return;
+  var path = decodeURIComponent(url.split("/object/public/files/")[1]);
+  try{
+    await fetch(SB_URL + "/storage/v1/object/files/" + path, {
+      method:"DELETE", headers:{ apikey: SB_KEY, Authorization: "Bearer " + SB_KEY }
+    });
+  }catch(e){ console.warn("删除文件失败", path, e.message); }
+}
+
+async function doBatch(){
+  var files = Array.prototype.slice.call($("#hiddenFile").files||[]);
+  $("#hiddenFile").value = "";
+  if(!files.length) return;
+  var over = files.filter(function(f){ return f.size > MAX_MB*1024*1024; });
+  if(over.length){
+    toast("有 "+over.length+" 个文件超过 "+MAX_MB+"MB，已跳过："+over.map(function(f){return f.name;}).join("、"));
+    files = files.filter(function(f){ return f.size <= MAX_MB*1024*1024; });
+  }
+  if(!files.length) return;
+  if(!confirm("将用这 "+files.length+" 张图片各建一条记录：\n· 产品名暂用文件名（保存后可改）\n· 用量、反馈留空，不预填任何数据\n· 图片作为「配方纸原图」保存\n继续？")) return;
+  var ok=0, fail=[];
+  for(var i=0;i<files.length;i++){
+    var f=files[i], id=newId();
+    var name=(f.name||"图片").replace(/\.[^.]+$/,"") || "未命名图片";
+    toast("批量导入 "+(i+1)+"/"+files.length+" …");
+    try{
+      var url = await uploadFile(f, id, "recipe");
+      await sb("/records", { method:"POST", body:{
+        id:id, product:name, category:"", version:1,
+        date:new Date().toISOString().slice(0,10), title:"",
+        ingredients:[], process:[], feedback:"", parent_id:null,
+        source:"manual", recipe_image_url:url, product_image_url:"",
+        attachments:[], updated_by:nowName()
+      }});
+      ok++;
+    }catch(e){ fail.push(name+"（"+e.message+"）"); }
+  }
+  await refresh();
+  toast("批量导入完成："+ok+" 条成功"+(fail.length?"，"+fail.length+" 条失败":""));
+  if(fail.length) console.warn(fail);
+}
+
 /* ================= 导出 / 导入 ================= */
 function blobToU8(blob){ return blob.arrayBuffer().then(function(b){ return new Uint8Array(b); }); }
 async function fetchAsU8(url){
@@ -548,6 +669,19 @@ async function doExport(){
           if(!seen[zipName]){ seen[zipName]=1; try{ files.push({ name:zipName, data:await fetchAsU8(url) }); }catch(e){ console.warn(e); } }
           copy[field]=zipName;      // 备份里存相对路径
         }
+      }
+      // 附件也打进备份
+      copy.attachments = [];
+      for(var k=0;k<(r.attachments||[]).length;k++){
+        var a=r.attachments[k];
+        var ac=JSON.parse(JSON.stringify(a));
+        if(a.url && a.url.indexOf(SB_URL+"/storage/v1/object/public/files/")===0){
+          var arel=decodeURIComponent(a.url.split("/object/public/files/")[1]);
+          var azip="images/"+arel;
+          if(!seen[azip]){ seen[azip]=1; try{ files.push({ name:azip, data:await fetchAsU8(a.url) }); }catch(e){ console.warn(e); } }
+          ac.url=azip;
+        }
+        copy.attachments.push(ac);
       }
       meta.records.push(copy);
     }
@@ -596,6 +730,12 @@ async function doImport(){
       else if(o.recipe_image_url && o.recipe_image_url.indexOf("http")!==0) o.recipe_image_url="";
       if(o.product_image_url && urlMap[o.product_image_url]) o.product_image_url=urlMap[o.product_image_url];
       else if(o.product_image_url && o.product_image_url.indexOf("http")!==0) o.product_image_url="";
+      o.attachments=(r.attachments||[]).map(function(a){
+        var ac=Object.assign({}, a);
+        if(ac.url && urlMap[ac.url]) ac.url=urlMap[ac.url];
+        else if(ac.url && ac.url.indexOf("http")!==0) ac.url="";
+        return ac;
+      }).filter(function(a){ return a.url; });
       return o;
     });
     await upsertRecords(recs);
