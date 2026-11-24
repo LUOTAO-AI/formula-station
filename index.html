@@ -60,6 +60,7 @@ iframe.on{display:block}
     try{
       var d = frame.contentDocument;
       if (!d) return;
+      var seg = d.querySelector('.seg'); if (seg) seg.style.display='none';  // 外层已有切换按钮
       var h = d.querySelector('header');
       if (h) {
         // 只藏标题块，保留「导出/导入/批量导入/新建」这些按钮
