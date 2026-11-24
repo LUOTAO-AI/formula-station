@@ -282,7 +282,7 @@ function bindMain(){
   $("#btnExport").onclick=doExport;
   $("#btnImport").onclick=function(){ pendingMode="import"; var h=$("#hiddenFile"); h.accept=".zip,.json"; h.multiple=false; h.value=""; h.click(); };
   $("#btnBatch").onclick=function(){ pendingMode="batch"; var h=$("#hiddenFile"); h.accept="image/*"; h.multiple=true; h.value=""; h.click(); };
-$("#btnImportDoc").onclick=function(){ pendingMode="doc"; var h=$("#hiddenFile"); h.accept=".docx"; h.multiple=false; h.value=""; h.click(); };
+$("#btnImportDoc").onclick=function(){ pendingMode="doc"; var h=$("#hiddenFile"); h.accept=".docx,.xlsx"; h.multiple=false; h.value=""; h.click(); };
   $("#btnNew").onclick=function(){ openForm(null,null); };
   $("#btnOut").onclick=function(){ sessionStorage.removeItem("fx_pass"); viewGate(); };
   $("#btnReset").onclick=function(){ ui.zone=""; ui.kw=""; ui.from=""; ui.to=""; ui.vFrom=""; ui.vTo="";
@@ -696,6 +696,41 @@ async function docxRows(buf){
   });
   return out;
 }
+
+async function xlsxRows(buf){
+  var entries=await zipUnpack(buf);
+  var get=function(n){ return entries.filter(function(e){return e.name===n;})[0]; };
+  var shared=[];
+  var sst=get("xl/sharedStrings.xml");
+  if(sst){
+    var sdom=new DOMParser().parseFromString(new TextDecoder().decode(sst.data),"application/xml");
+    Array.prototype.forEach.call(sdom.getElementsByTagName("si"),function(si){
+      shared.push(Array.prototype.map.call(si.getElementsByTagName("t"),function(t){return t.textContent;}).join(""));
+    });
+  }
+  var sheet=entries.filter(function(e){return /^xl\/worksheets\/sheet\d+\.xml$/.test(e.name);})[0];
+  if(!sheet) throw new Error("不是有效的 .xlsx（找不到工作表）");
+  var dom=new DOMParser().parseFromString(new TextDecoder().decode(sheet.data),"application/xml");
+  if(dom.getElementsByTagName("parsererror").length) throw new Error("表格内容解析失败");
+  var out=[];
+  Array.prototype.forEach.call(dom.getElementsByTagName("row"),function(row){
+    var cells=[];
+    Array.prototype.forEach.call(row.getElementsByTagName("c"),function(c){
+      var ref=c.getAttribute("r")||"", col=(ref.match(/^[A-Z]+/)||["A"])[0];
+      var idx=0; for(var i=0;i<col.length;i++) idx=idx*26+(col.charCodeAt(i)-64);
+      idx=Math.max(0,idx-1);
+      var t=c.getAttribute("t"), v=c.getElementsByTagName("v")[0], txt="";
+      if(t==="s" && v) txt=shared[parseInt(v.textContent,10)]||"";
+      else if(t==="inlineStr") txt=Array.prototype.map.call(c.getElementsByTagName("t"),function(x){return x.textContent;}).join("");
+      else if(v) txt=v.textContent;
+      cells[idx]=txt;
+    });
+    var has=false;
+    for(var k=0;k<cells.length;k++) if(cells[k]) has=true;
+    if(has && cells.length>=2) out.push(cells.map(function(x){return x==null?"":String(x).trim();}));
+  });
+  return out;
+}
 function normRow(cells){
   var name=(cells[0]||"").replace(/^\d+[.、)]\s*/,"").trim();
   if(!name) return null;
@@ -709,14 +744,15 @@ function normRow(cells){
 async function doImportDoc(){
   var f=$("#hiddenFile").files[0]; if(!f) return;
   $("#hiddenFile").value="";
-  if(!/\.docx$/i.test(f.name)){ toast("只支持 .docx（Word 2007 及以上）；.doc 请先另存为 .docx"); return; }
+  var isDocx=/\.docx$/i.test(f.name), isXlsx=/\.xlsx$/i.test(f.name);
+  if(!isDocx && !isXlsx){ toast("只支持 .docx / .xlsx；.doc、.xls 请先另存为新格式再导入"); return; }
   if(f.size>MAX_MB*1024*1024){ toast("文件「"+f.name+"」有 "+(f.size/1024/1024).toFixed(1)+"MB，超过上限 "+MAX_MB+"MB，已拒绝"); return; }
   var rows;
-  try{ rows=await docxRows(await f.arrayBuffer()); }
+  try{ var buf=await f.arrayBuffer(); rows=isDocx ? await docxRows(buf) : await xlsxRows(buf); }
   catch(e){ toast("读取失败："+e.message+"（现有数据未改动）"); return; }
   var items=rows.map(normRow).filter(Boolean);
   if(!items.length){ toast("这份文档里没找到「原料 + 用量」的表格行，请确认表格是两列以上"); return; }
-  showDocPreview(f.name.replace(/\.docx$/i,""), items);
+  showDocPreview(f.name.replace(/\.(docx|xlsx)$/i,""), items);
 }
 function showDocPreview(defaultName, items){
   var body='<div class="hint">从 Word 表格读到 '+items.length+' 行，逐项核对后再保存；识别不出的留空，不会自动编数。</div>'+
