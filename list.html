@@ -731,6 +731,53 @@ async function xlsxRows(buf){
   });
   return out;
 }
+
+function findHeader(rows){
+  var limit=Math.min(rows.length,6);
+  for(var i=0;i<limit;i++){
+    var r=rows[i]||[], m={};
+    for(var j=0;j<r.length;j++){
+      var t=String(r[j]||"").replace(/\s/g,"");
+      if(!t) continue;
+      if(/^(序号|编号|no\.?)$/i.test(t)) m.idx=j;
+      else if(/^(原料名称|原料|配料|材料|名称)$/.test(t)) m.name=j;
+      else if(/^配比/.test(t)) m.ratio=j;
+      else if(/^(称量|用量|克数|重量)/.test(t)) m.amount=j;
+      else if(/^单位$/.test(t)) m.unit=j;
+      else if(/^(备注|说明)/.test(t)) m.note=j;
+    }
+    if(m.name!=null && (m.amount!=null || m.ratio!=null)) return { row:i, map:m };
+  }
+  return null;
+}
+function mapRows(rows){
+  var h=findHeader(rows);
+  if(!h){
+    return rows.map(function(c){
+      var n=(c[0]||"").trim();
+      if(!n) return null;
+      if(/^(原料|配料|材料|名称|序号|合计|总计)$/.test(n)) return null;
+      var raw=(c[1]||"").trim();
+      return { name:n, amount:(raw.match(/\d+(\.\d+)?/)||[""])[0], unit:((c[2]||"").trim()||"g"), note:(c[3]||"").trim() };
+    }).filter(Boolean);
+  }
+  var out=[];
+  for(var i=h.row+1;i<rows.length;i++){
+    var r=rows[i]||[];
+    var name=String(r[h.map.name]!=null?r[h.map.name]:"").trim();
+    if(!name) continue;
+    if(/^(合计|总计|小计)$/.test(name)) continue;
+    var amountRaw=String(h.map.amount!=null?(r[h.map.amount]||""):"").trim();
+    var ratioRaw=String(h.map.ratio!=null?(r[h.map.ratio]||""):"").trim();
+    var unitTxt=String(h.map.unit!=null?(r[h.map.unit]||""):"").trim();
+    var num=(amountRaw.match(/\d+(\.\d+)?/)||[""])[0];
+    if(!num) num=(ratioRaw.match(/\d+(\.\d+)?/)||[""])[0];
+    var note=String(h.map.note!=null?(r[h.map.note]||""):"").trim();
+    if(ratioRaw) note=(note?note+"；":"")+"配比 "+ratioRaw;
+    out.push({ name:name, amount:num, unit:unitTxt||"g", note:note });
+  }
+  return out;
+}
 function normRow(cells){
   var name=(cells[0]||"").replace(/^\d+[.、)]\s*/,"").trim();
   if(!name) return null;
@@ -750,7 +797,7 @@ async function doImportDoc(){
   var rows;
   try{ var buf=await f.arrayBuffer(); rows=isDocx ? await docxRows(buf) : await xlsxRows(buf); }
   catch(e){ toast("读取失败："+e.message+"（现有数据未改动）"); return; }
-  var items=rows.map(normRow).filter(Boolean);
+  var items=mapRows(rows);
   if(!items.length){ toast("这份文档里没找到「原料 + 用量」的表格行，请确认表格是两列以上"); return; }
   showDocPreview(f.name.replace(/\.(docx|xlsx)$/i,""), items);
 }
