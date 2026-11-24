@@ -98,6 +98,10 @@ header .ops{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
   .imgbox img{width:120px;height:90px}
 }
 .seg{padding:2px;border:1px solid var(--line);border-radius:8px;background:#f7f8fa;display:inline-flex;gap:2px;margin-right:4px}.seg a{font-size:12.5px;padding:4px 10px;border-radius:6px;color:var(--sub);text-decoration:none;white-space:nowrap}.seg a.on{background:#fff;color:var(--brand);font-weight:600}
+.askmask{position:fixed;inset:0;background:rgba(29,33,41,.4);display:grid;place-items:center;z-index:200;padding:20px}
+.askbox{background:#fff;border-radius:12px;max-width:420px;width:100%;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.18)}
+.askmsg{font-size:13.5px;line-height:1.7;white-space:pre-wrap;color:var(--ink)}
+.askfoot{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
 </style>
 </head>
 <body>
@@ -128,7 +132,17 @@ var pendingMode = "import";
 /* ---------- 基础工具 ---------- */
 function $(s){ return document.querySelector(s); }
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
-function toast(m){ var t=$("#toast"); t.textContent=m; t.classList.add("on"); clearTimeout(window.__t); window.__t=setTimeout(function(){ t.classList.remove("on"); },4200); }
+function askConfirm(msg){
+  return new Promise(function(resolve){
+    var mask=document.createElement('div'); mask.className='askmask';
+    mask.innerHTML='<div class="askbox"><div class="askmsg">'+esc(msg)+'</div><div class="askfoot"><button class="btn" data-ask="0">取消</button><button class="btn primary" data-ask="1">确定</button></div></div>';
+    document.body.appendChild(mask);
+    function done(v){ try{mask.remove();}catch(e){} resolve(v); }
+    mask.querySelector('[data-ask="0"]').onclick=function(){ done(false); };
+    mask.querySelector('[data-ask="1"]').onclick=function(){ done(true); };
+    mask.addEventListener('click',function(e){ if(e.target===mask) done(false); });
+  });
+}function toast(m){ var t=$("#toast"); t.textContent=m; t.classList.add("on"); clearTimeout(window.__t); window.__t=setTimeout(function(){ t.classList.remove("on"); },4200); }
 function setJob(html){ var el=$("#jobStatus"); if(!el) return; if(!html){ el.style.display="none"; el.innerHTML=""; return; } el.style.display="block"; el.innerHTML=html; var jb=$("#jobClose"); if(jb) jb.onclick=function(){ setJob(""); }; }
 function nowName(){ var n=ui.name||"未署名"; return n; }
 function newId(){ var d=new Date(), p=function(n){return (n<10?"0":"")+n;};
@@ -420,9 +434,9 @@ function openForm(rec, parent){
   $("#cancelBtn").onclick=closeModal;
   $("#saveBtn").onclick=saveForm;
   $("#modal").querySelectorAll("[data-attdel]").forEach(function(b){
-    b.onclick=function(){
+    b.onclick=async function(){
       var row=b.closest(".line"), url=row.getAttribute("data-url");
-      if(!confirm("删除这个附件？会同时从服务器删除文件。")) return;
+      if(!(await askConfirm("删除这个附件？会同时从服务器删除文件。"))) return;
       deleteByPublicUrl(url);
       editing.att = (editing.att||[]).filter(function(a){ return a.url!==url; });
       row.remove();
@@ -537,7 +551,7 @@ function showDetail(id){
   $("#modal").querySelectorAll("[data-attid]").forEach(function(b){
     b.onclick=async function(){
       var url=b.getAttribute("data-attid");
-      if(!confirm("删除这个附件？会同时从服务器删除文件，无法恢复。")) return;
+      if(!(await askConfirm("删除这个附件？会同时从服务器删除文件，无法恢复。"))) return;
       b.disabled=true; b.textContent="删除中…";
       await deleteByPublicUrl(url);
       var rest=(r.attachments||[]).filter(function(a){ return a.url!==url; });
@@ -549,7 +563,7 @@ function showDetail(id){
   });
 }
 async function delRecord(r){
-  if(!confirm("确认删除 "+r.product+" "+vTag(versionOf(r))+"？删除后无法恢复（它在版本链上的后续版本不会跟着删），图片与附件会一起删除。")) return;
+  if(!(await askConfirm("确认删除 "+r.product+" "+vTag(versionOf(r))+"？删除后无法恢复（它在版本链上的后续版本不会跟着删），图片与附件会一起删除。")) )return;
   try{
     await deleteByPublicUrl(r.recipe_image_url);
     await deleteByPublicUrl(r.product_image_url);
@@ -626,7 +640,7 @@ async function doBatch(){
     files = files.filter(function(f){ return f.size <= MAX_MB*1024*1024; });
   }
   if(!files.length) return;
-  if(!confirm("将用这 "+files.length+" 张图片各建一条记录：\n· 产品名暂用文件名（保存后可改）\n· 用量、反馈留空，不预填任何数据\n· 图片作为「配方纸原图」保存\n继续？")) return;
+  if(!(await askConfirm("将用这 "+files.length+" 张图片各建一条记录：\n· 产品名暂用文件名（保存后可改）\n· 用量、反馈留空，不预填任何数据\n· 图片作为「配方纸原图」保存\n继续？")) )return;
   var ok=0, fail=[];
   setJob('<b>批量导入进行中…</b><div style="color:#86909c">共 '+files.length+' 张，正在上传第 1 张</div>');
   for(var i=0;i<files.length;i++){
@@ -718,7 +732,7 @@ async function doImport(){
       var txt=await f.text(); var d=JSON.parse(txt);
       var recs = Array.isArray(d) ? d : d.records;
       if(!Array.isArray(recs)) throw new Error("这个 JSON 里没有 records 数组");
-      if(!confirm("这是纯 JSON 备份，不含图片与附件。\n将导入 "+recs.length+" 条记录（不删除现有数据），继续？")) return;
+      if(!(await askConfirm("这是纯 JSON 备份，不含图片与附件。\n将导入 "+recs.length+" 条记录（不删除现有数据），继续？")) )return;
       await upsertRecords(recs.map(function(r){ return Object.assign({}, r, { recipe_image_url:"", product_image_url:"" }); }));
       toast("已导入 "+recs.length+" 条（图片需重新上传）");
       return;
@@ -728,7 +742,7 @@ async function doImport(){
     if(!metaEntry) throw new Error("压缩包里没有 meta.json，不是本系统导出的备份");
     var meta=JSON.parse(new TextDecoder().decode(metaEntry.data));
     var imageEntries=entries.filter(function(e){ return e.name.indexOf("images/")===0; });
-    if(!confirm("将恢复 "+meta.records.length+" 条记录、"+imageEntries.length+" 个图片文件（不删除现有数据）。继续？")) return;
+    if(!(await askConfirm("将恢复 "+meta.records.length+" 条记录、"+imageEntries.length+" 个图片文件（不删除现有数据）。继续？")) )return;
     // 先传图片，再写记录；任一步失败都不动现有数据
     var urlMap={};
     for(var i=0;i<imageEntries.length;i++){
