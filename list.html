@@ -256,7 +256,7 @@ function viewMain(){
     '<div class="ops"><span class="seg"><a class="on" href="./index.html">列表</a><a href="https://luotao-ai.github.io/formula-station-map/">思维导图</a></span><span class="status" id="st">连接中…</span>'+
       '<button class="btn" id="btnExport">导出备份（含图）</button>'+
       '<button class="btn" id="btnImport">导入备份</button>'+
-      '<button class="btn" id="btnBatch">批量导入图片</button>'+
+      '<button class="btn" id="btnBatch">批量导入图片</button><button class="btn" id="btnImportDoc">导入配方文件</button>'+
       '<button class="btn primary" id="btnNew">+ 新建配方</button>'+
       '<button class="btn" id="btnOut">退出</button></div></header>'+
     '<div class="modebar"><span class="lbl">分区方式：</span>'+
@@ -282,6 +282,7 @@ function bindMain(){
   $("#btnExport").onclick=doExport;
   $("#btnImport").onclick=function(){ pendingMode="import"; var h=$("#hiddenFile"); h.accept=".zip,.json"; h.multiple=false; h.value=""; h.click(); };
   $("#btnBatch").onclick=function(){ pendingMode="batch"; var h=$("#hiddenFile"); h.accept="image/*"; h.multiple=true; h.value=""; h.click(); };
+$("#btnImportDoc").onclick=function(){ pendingMode="doc"; var h=$("#hiddenFile"); h.accept=".docx"; h.multiple=false; h.value=""; h.click(); };
   $("#btnNew").onclick=function(){ openForm(null,null); };
   $("#btnOut").onclick=function(){ sessionStorage.removeItem("fx_pass"); viewGate(); };
   $("#btnReset").onclick=function(){ ui.zone=""; ui.kw=""; ui.from=""; ui.to=""; ui.vFrom=""; ui.vTo="";
@@ -295,7 +296,7 @@ function bindMain(){
   $("#fTo").onchange=function(){ ui.to=this.value; renderResults(); };
   $("#fVFrom").onchange=function(){ ui.vFrom=this.value; renderResults(); };
   $("#fVTo").onchange=function(){ ui.vTo=this.value; renderResults(); };
-  $("#hiddenFile").onchange=function(){ if(pendingMode==="batch") doBatch(); else doImport(); };
+  $("#hiddenFile").onchange=function(){ if(pendingMode==="batch") doBatch(); else if(pendingMode==="doc") doImportDoc(); else doImport(); };
 }
 function renderAll(){
   document.querySelectorAll(".chip[data-mode]").forEach(function(b){ b.classList.toggle("on", b.dataset.mode===ui.mode); });
@@ -601,7 +602,13 @@ async function zipPack(entries){ // entries: [{name, data:Uint8Array}]
     u32(centralBlob.length),u32(offset),u16(0)]);
   return new Blob([cat(parts), centralBlob, end], { type:"application/zip" });
 }
-function zipUnpack(buf){
+async function inflateRaw(u8){
+  if(typeof DecompressionStream === "undefined") throw new Error("这个浏览器不支持解压（请用新版 Chrome/Edge）");
+  var ds=new DecompressionStream("deflate-raw");
+  var stream=new Blob([u8]).stream().pipeThrough(ds);
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+async function zipUnpack(buf){
   var u8=new Uint8Array(buf), dv=new DataView(buf), out=[], p=0;
   while(p < u8.length-4){
     var sig=dv.getUint32(p,true);
@@ -612,8 +619,11 @@ function zipUnpack(buf){
     var nlen=dv.getUint16(p+26,true), elen=dv.getUint16(p+28,true);
     var name=new TextDecoder().decode(u8.slice(p+30,p+30+nlen));
     var dataStart=p+30+nlen+elen;
-    if(method !== 0) throw new Error("压缩包用了压缩算法，本系统只支持自己导出的包");
-    out.push({ name:name, data:u8.slice(dataStart, dataStart+csize) });
+    var raw=u8.slice(dataStart, dataStart+csize), data;
+    if(method===0){ data=raw; }
+    else if(method===8){ data=await inflateRaw(raw); }
+    else { throw new Error("压缩包用了不支持的压缩算法（method="+method+"）"); }
+    out.push({ name:name, data:data });
     p = dataStart + csize;
   }
   return out;
@@ -667,6 +677,83 @@ async function doBatch(){
   refresh().catch(function(e){ toast("列表刷新失败："+e.message+"（数据已写入，刷新页面即可）"); });
 }
 
+/* ================= 导入配方文件（.docx 表格） ================= */
+async function docxRows(buf){
+  var entries=await zipUnpack(buf);
+  var doc=entries.filter(function(e){return e.name==="word/document.xml";})[0];
+  if(!doc) throw new Error("不是有效的 .docx（缺少 word/document.xml）");
+  var xml=new TextDecoder().decode(doc.data);
+  var dom=new DOMParser().parseFromString(xml,"application/xml");
+  if(dom.getElementsByTagName("parsererror").length) throw new Error("文档内容解析失败");
+  var out=[];
+  Array.prototype.forEach.call(dom.getElementsByTagName("w:tbl"),function(tb){
+    Array.prototype.forEach.call(tb.getElementsByTagName("w:tr"),function(tr){
+      var cells=Array.prototype.map.call(tr.getElementsByTagName("w:tc"),function(tc){
+        return Array.prototype.map.call(tc.getElementsByTagName("w:t"),function(t){return t.textContent;}).join("").trim();
+      });
+      if(cells.length>=2) out.push(cells);
+    });
+  });
+  return out;
+}
+function normRow(cells){
+  var name=(cells[0]||"").replace(/^\d+[.、)]\s*/,"").trim();
+  if(!name) return null;
+  if(/^(原料|配料|材料|名称|序号|合计|总计)/.test(name)) return null;
+  var raw=(cells[1]||"").trim();
+  var num=(raw.match(/\d+(\.\d+)?/)||[""])[0];
+  var unit=(cells[2]||"").trim();
+  if(!unit){ var u=raw.match(/[a-zA-Z%]+/); unit=u?u[0]:""; }
+  return { name:name, amount:num, unit:unit||"g", note:(cells[3]||"").trim() };
+}
+async function doImportDoc(){
+  var f=$("#hiddenFile").files[0]; if(!f) return;
+  $("#hiddenFile").value="";
+  if(!/\.docx$/i.test(f.name)){ toast("只支持 .docx（Word 2007 及以上）；.doc 请先另存为 .docx"); return; }
+  if(f.size>MAX_MB*1024*1024){ toast("文件「"+f.name+"」有 "+(f.size/1024/1024).toFixed(1)+"MB，超过上限 "+MAX_MB+"MB，已拒绝"); return; }
+  var rows;
+  try{ rows=await docxRows(await f.arrayBuffer()); }
+  catch(e){ toast("读取失败："+e.message+"（现有数据未改动）"); return; }
+  var items=rows.map(normRow).filter(Boolean);
+  if(!items.length){ toast("这份文档里没找到「原料 + 用量」的表格行，请确认表格是两列以上"); return; }
+  showDocPreview(f.name.replace(/\.docx$/i,""), items);
+}
+function showDocPreview(defaultName, items){
+  var body='<div class="hint">从 Word 表格读到 '+items.length+' 行，逐项核对后再保存；识别不出的留空，不会自动编数。</div>'+
+    '<div class="f"><label>产品名（默认取文件名，可改）</label><input id="dpName" value="'+esc(defaultName)+'"></div>'+
+    '<div class="f"><label>用量（可改）</label>'+
+      '<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="color:#86909c"><th style="text-align:left;padding:4px 6px">原料</th><th style="text-align:left;width:90px">用量</th><th style="text-align:left;width:70px">单位</th><th style="text-align:left">备注</th></tr></thead><tbody id="dpBody">'+
+      items.map(function(it){
+        return '<tr><td style="padding:2px"><input data-k="name" value="'+esc(it.name)+'" style="width:100%;border:1px solid var(--line);border-radius:6px;padding:4px 6px"></td>'+
+          '<td style="padding:2px"><input data-k="amount" value="'+esc(it.amount)+'" style="width:100%;border:1px solid var(--line);border-radius:6px;padding:4px 6px"></td>'+
+          '<td style="padding:2px"><input data-k="unit" value="'+esc(it.unit)+'" style="width:100%;border:1px solid var(--line);border-radius:6px;padding:4px 6px"></td>'+
+          '<td style="padding:2px"><input data-k="note" value="'+esc(it.note)+'" style="width:100%;border:1px solid var(--line);border-radius:6px;padding:4px 6px"></td></tr>';
+      }).join("")+'</tbody></table></div>'+
+    '<div class="foot"><button class="btn" id="dpCancel">取消</button><button class="btn primary" id="dpSave">确认导入</button></div>';
+  $("#modal").innerHTML='<h3>导入预览</h3>'+body;
+  $("#mask").classList.add("on");
+  $("#dpCancel").onclick=closeModal;
+  $("#dpSave").onclick=async function(){
+    var name=$("#dpName").value.trim();
+    if(!name){ toast("产品名不能为空"); return; }
+    var ing=Array.prototype.map.call(document.querySelectorAll("#dpBody tr"),function(tr){
+      var o={}; tr.querySelectorAll("input").forEach(function(i){o[i.dataset.k]=i.value.trim();});
+      return o;
+    }).filter(function(o){return (o.name||"").length;});
+    if(!ing.length){ toast("至少保留一行原料"); return; }
+    var btn=$("#dpSave"); btn.disabled=true; btn.textContent="保存中…";
+    try{
+      await sb("/records",{method:"POST",body:{
+        id:newId(), product:name, category:"", version:1,
+        date:new Date().toISOString().slice(0,10), title:"",
+        ingredients:ing, process:[], feedback:"", parent_id:null,
+        source:"doc", recipe_image_url:"", product_image_url:"",
+        attachments:[], updated_by:nowName()
+      }});
+      await refresh(); closeModal(); toast("已导入 1 条配方（"+ing.length+" 行原料）");
+    }catch(e){ toast("导入失败："+e.message); btn.disabled=false; btn.textContent="确认导入"; }
+  };
+}
 /* ================= 导出 / 导入 ================= */
 function blobToU8(blob){ return blob.arrayBuffer().then(function(b){ return new Uint8Array(b); }); }
 async function fetchAsU8(url){
@@ -737,7 +824,7 @@ async function doImport(){
       toast("已导入 "+recs.length+" 条（图片需重新上传）");
       return;
     }
-    var entries=zipUnpack(await f.arrayBuffer());
+    var entries=await zipUnpack(await f.arrayBuffer());
     var metaEntry=entries.filter(function(e){ return e.name==="meta.json"; })[0];
     if(!metaEntry) throw new Error("压缩包里没有 meta.json，不是本系统导出的备份");
     var meta=JSON.parse(new TextDecoder().decode(metaEntry.data));
