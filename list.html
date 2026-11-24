@@ -39,15 +39,15 @@ header .ops{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
 .datef input{width:130px}
 .res{display:grid;gap:10px}
 .rec{border:1px solid var(--line);border-radius:10px;padding:13px 14px;background:#fff}
-.rec .top{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.rec .prod{font-weight:600}
+.rec .top{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.rec .prod{font-size:15px;line-height:1.4;font-weight:600}
 .rec .ver{background:var(--soft);color:var(--brand);border-radius:6px;padding:1px 7px;font-size:12px;font-weight:600}
-.rec .dt{color:var(--faint);font-size:12px}
-.rec .acts{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
-.rec .row{display:flex;gap:8px;font-size:12.5px;margin-top:6px}
+.rec .dt{color:var(--faint);font-size:12px;margin-left:auto;font-variant-numeric:tabular-nums;text-align:right;min-width:88px}
+.rec .acts{margin-left:8px;display:flex;gap:6px;flex-wrap:wrap}
+.rec .row{display:flex;gap:8px;font-size:13px;margin-top:4px}
 .rec .k{flex:0 0 56px;color:var(--faint)}
 .rec .v{color:var(--sub);word-break:break-word}
-.tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:10px;background:#f2f3f5;color:var(--sub);margin-right:4px}
+.tag{display:inline-block;font-size:12px;line-height:1.5;padding:1px 8px;border-radius:10px;background:#f2f3f5;color:var(--sub);margin-right:4px}
 .empty{border:1px dashed var(--line);border-radius:10px;padding:40px 16px;text-align:center;color:var(--faint);background:#fcfdff}
 .err{border:1px solid #f3d2d6;background:#fdecee;color:var(--bad);border-radius:10px;padding:14px;font-size:13px;line-height:1.7}
 .mask{position:fixed;inset:0;background:rgba(29,33,41,.36);display:none;place-items:center;padding:16px;z-index:50}
@@ -125,7 +125,7 @@ var MAX_MB = 20;                // 单个文件上限（MB）
 
 var H = { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY };
 var db = { records: [] };
-var ui = { mode: "product", zone: "", kw: "", from: "", to: "", vFrom: "", vTo: "", name: "" };
+var ui = { mode: "product", zone: "", kw: "", from: "", to: "", vFrom: "", vTo: "", name: "", sort: "updated" };
 var editing = null;
 var pendingMode = "import";
 
@@ -217,6 +217,40 @@ function filtered(){
     return db2.localeCompare(da);
   });
 }
+
+/* ---------- 排序（只作用于筛选后的列表，不改筛选逻辑） ---------- */
+var SORT_KEYS = ["updated","version","date","product"];
+var SORT_LABELS = [["updated","按更新时间（默认）"],["version","按版本号（大到小）"],["date","按日期（大到小）"],["product","按产品名（中文排序）"]];
+function sortMode(){ return SORT_KEYS.indexOf(ui.sort) > -1 ? ui.sort : "updated"; }
+function savedSort(){
+  try{
+    var v = localStorage.getItem("formula.sort");
+    return SORT_KEYS.indexOf(v) > -1 ? v : "updated";
+  }catch(e){ return "updated"; }
+}
+function sortOptions(){
+  var cur = sortMode();
+  return SORT_LABELS.map(function(o){
+    return '<option value="'+o[0]+'"'+(o[0]===cur?" selected":"")+'>'+o[1]+'</option>';
+  }).join("");
+}
+function timeKey(r){ return String(r.updated_at || r.date || ""); }
+function sortRecords(list){
+  var mode = sortMode();
+  var cmp;
+  if(mode==="version"){
+    cmp = function(a,b){ return versionOf(b)-versionOf(a); };
+  }else if(mode==="date"){
+    cmp = function(a,b){ return String(b.date||"").localeCompare(String(a.date||"")); };
+  }else if(mode==="product"){
+    cmp = function(a,b){ return String(a.product||"").localeCompare(String(b.product||""),"zh-Hans-CN"); };
+  }else{
+    cmp = function(a,b){ return timeKey(b).localeCompare(timeKey(a)); };
+  }
+  return list.map(function(r,i){ return { r:r, i:i }; })
+    .sort(function(a,b){ var d=cmp(a.r,b.r); return d ? d : (a.i-b.i); })  // 同值保持原有相对顺序
+    .map(function(x){ return x.r; });
+}
 function usageText(r){
   var list=(r.ingredients||[]).filter(function(i){return i.name;}).slice(0,3)
     .map(function(i){ return i.name+" "+(i.amount||"")+(i.unit||""); });
@@ -272,6 +306,7 @@ function viewMain(){
         '<input id="fKw" type="search" placeholder="关键词：原料名 / 反馈里的词（单位如 g 会被忽略）">'+
         '<span class="datef">日期 <input id="fFrom" type="date"> — <input id="fTo" type="date"></span>'+
         '<span class="datef">版本 <input id="fVFrom" type="number" min="1" step="1" placeholder="起"> — <input id="fVTo" type="number" min="1" step="1" placeholder="止"></span>'+
+        '<select id="sortBy" title="排序方式">'+sortOptions()+'</select>'+
         '<button class="btn sm" id="btnReset">清空条件</button>'+
       '</div><div class="res" id="resList"></div></div></section></div>';
   bindMain();
@@ -296,6 +331,11 @@ $("#btnImportDoc").onclick=function(){ pendingMode="doc"; var h=$("#hiddenFile")
   $("#fTo").onchange=function(){ ui.to=this.value; renderResults(); };
   $("#fVFrom").onchange=function(){ ui.vFrom=this.value; renderResults(); };
   $("#fVTo").onchange=function(){ ui.vTo=this.value; renderResults(); };
+  $("#sortBy").onchange=function(){
+    ui.sort = SORT_KEYS.indexOf(this.value) > -1 ? this.value : "updated";
+    try{ localStorage.setItem("formula.sort", ui.sort); }catch(e){}
+    renderResults();
+  };
   $("#hiddenFile").onchange=function(){ if(pendingMode==="batch") doBatch(); else if(pendingMode==="doc") doImportDoc(); else doImport(); };
 }
 function renderAll(){
@@ -315,7 +355,7 @@ function renderAll(){
   renderResults();
 }
 function renderResults(){
-  var list=filtered();
+  var list=sortRecords(filtered());
   var box=$("#resList");
   if(!db.records.length){ box.innerHTML='<div class="empty">暂无记录。点右上角「+ 新建配方」开始第一次记录（不会预填任何数据）。</div>'; return; }
   if(!list.length){ box.innerHTML='<div class="empty">没有符合条件的记录。试试清空日期或版本条件。</div>'; return; }
@@ -987,6 +1027,7 @@ function boot2(){
 }
 function boot(){
   ui.name = localStorage.getItem("fx_name") || "";
+  ui.sort = savedSort();
   if(sessionStorage.getItem("fx_pass")==="1" && ui.name){ boot2(); }
   else { viewGate(); }
 }
