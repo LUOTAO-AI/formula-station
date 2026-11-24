@@ -61,9 +61,17 @@ iframe.on{display:block}
       var d = frame.contentDocument;
       if (!d) return;
       var h = d.querySelector('header');
-      if (h) h.style.display = 'none';
+      if (h) {
+        // 只藏标题块，保留「导出/导入/批量导入/新建」这些按钮
+        var title = h.firstElementChild;
+        if (title) title.style.display = 'none';
+        h.style.height = '46px';
+        h.style.padding = '0 10px';
+        var out = d.querySelector('#btnOut');
+        if (out) out.style.display = 'none';   // 外层已有退出
+      }
       var w = d.querySelector('.workspace');
-      if (w) w.style.height = '100vh';
+      if (w) w.style.height = 'calc(100vh - 46px)';
       var wrap = d.querySelector('.wrap');
       if (wrap) wrap.style.paddingTop = '10px';
     }catch(e){}
